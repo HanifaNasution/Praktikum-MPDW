@@ -1,1 +1,356 @@
+---
+title: "Prak1_Pemulusan"
+author: "Hanifa Rahmacindia Nasution"
+date: "2023-09-01"
+output: html_document
+---
 
+# Akses Library
+```{r}
+library(forecast)
+library(graphics)
+library(TTR)
+library(TSA)
+```
+
+# Import Data
+```{r}
+library(rio)
+gas <- import("https://raw.githubusercontent.com/HanifaNasution/Praktikum-MPDW/main/Data/Data%20Natural%20Gas%20Imputasi.csv")
+View(gas)
+str(gas)
+dim(gas)
+```
+
+Ubah data tanggal ke mode "date"
+```{r}
+library(dplyr)
+library(lubridate)
+library(stringr)
+gas_clean <- gas %>% 
+  mutate(Date = mdy(Date))
+str(gas_clean)
+```
+Tampak bahwa kolom tanggal telah menggunakan mode "Date" bukan "chr" lagi
+
+# Eksplorasi Data
+Ringkasan data
+```{r}
+summary(gas_clean)
+```
+
+Mengubah data agar terbaca sebagai data deret waktu
+```{r}
+gasopen.ts <- ts(gas_clean$Open)
+gashigh.ts <- ts(gas_clean$High)
+gaslow.ts <- ts(gas_clean$Low)
+gasclose.ts <- ts(gas_clean$Close)
+gasvolume.ts <- ts(gas_clean$Volume)
+```
+
+Membuat plot data deret waktu awal
+```{r}
+ts.plot(gasopen.ts, xlab="Time Period ", ylab="Gas Open", 
+        main = "Time Series Plot")
+points(gasopen.ts)
+
+ts.plot(gashigh.ts, xlab="Time Period ", ylab="Gas High", 
+        main = "Time Series Plot")
+points(gashigh.ts)
+
+ts.plot(gaslow.ts, xlab="Time Period ", ylab="Gas Low", 
+        main = "Time Series Plot")
+points(gaslow.ts)
+
+ts.plot(gasclose.ts, xlab="Time Period ", ylab="Gas Close", 
+        main = "Time Series Plot")
+points(gasclose.ts)
+
+ts.plot(gasvolume.ts, xlab="Time Period ", ylab="Volume", 
+        main = "Time Series Plot")
+points(gasvolume.ts)
+```
+Berdasarkan plot data awal, tampak data memiliki pola trend sehingga akan lebih cocok jika menggunakan metode Double Moving Average atau Double Exponential Smoothing
+
+# Imputasi Data Hilang 
+```{r}
+#install.packages("imputeTS")
+library(imputeTS)
+
+gas.open<- na_interpolation(gas_clean$Open)
+ggplot_na_imputations(gas_clean$Open,gas.open)
+
+gas.high<- na_interpolation(gas_clean$High)
+ggplot_na_imputations(gas_clean$High,gas.high)
+
+gas.low<- na_interpolation(gas_clean$Low)
+ggplot_na_imputations(gas_clean$Low,gas.low)
+
+gas.close <- na_interpolation(gas_clean$Close)
+ggplot_na_imputations(gas_clean$Close,gas.close)
+
+gas.volume <- na_interpolation(gas_clean$Volume)
+ggplot_na_imputations(gas_clean$Volume,gas.volume)
+```
+
+# Data Gas Baru Setelah Imputasi
+```{r}
+gas.imp <- data.frame(gas_clean$Period,gas_clean$Date,cbind(gas.open,gas.high,gas.low,gas.close,gas.volume),gas_clean$Currency)
+View(gas.imp)
+str(gas.imp)
+summary(gas.imp)
+
+names(gas.imp)[1] <- "Period"
+names(gas.imp)[2] <- "Date"
+names(gas.imp)[3] <- "Open"
+names(gas.imp)[4] <- "High"
+names(gas.imp)[5] <- "Low"
+names(gas.imp)[6] <- "Close"
+names(gas.imp)[7] <- "Volume"
+names(gas.imp)[8] <- "Currency"
+
+View(gas.imp)
+
+gasopen.ts <- ts(gas.imp$Open)
+gashigh.ts <- ts(gas.imp$High)
+gaslow.ts <- ts(gas.imp$Low)
+gasclose.ts <- ts(gas.imp$Close)
+gasvolume.ts <- ts(gas.imp$Volume)
+```
+
+# Pembagian Data Latih dan Data Uji
+Data Latih 80% data awal
+Data Uji 20% data awal
+```{r}
+training_data <- gas.imp[1:293,]
+testing_data <- gas.imp[293:366,]
+```
+
+# Memeriksa Apakah Ada Pola Musiman
+```{r}
+gas.imp.open.ts <- ts(gas.imp$Open)
+seasonplot(gas.imp.open.ts,30,
+  main="Natural Gas", 
+  xlab = "Periode ke -",
+  ylab = "Open Price",
+  year.labels = TRUE, col=rainbow(18))
+
+gas.imp.high.ts <- ts(gas.imp$High)
+seasonplot(gas.imp.high.ts,30,
+  main="Natural Gas", 
+  xlab = "Periode ke -",
+  ylab = "High Price",
+  year.labels = TRUE, col=rainbow(18))
+
+gas.imp.low.ts <- ts(gas.imp$Low)
+seasonplot(gas.imp.low.ts,30,
+  main="Natural Gas", 
+  xlab = "Periode ke -",
+  ylab = "Low Price",
+  year.labels = TRUE, col=rainbow(18))
+
+gas.imp.close.ts <- ts(gas.imp$Close)
+seasonplot(gas.imp.close.ts,30,
+  main="Natural Gas", 
+  xlab = "Periode ke -",
+  ylab = "Close Price",
+  year.labels = TRUE, col=rainbow(18))
+
+gas.imp.volume.ts <- ts(gas.imp$Volume)
+seasonplot(gas.imp.volume.ts,30,
+  main="Natural Gas", 
+  xlab = "Periode ke -",
+  ylab = "Volume",
+  year.labels = TRUE, col=rainbow(18))
+```
+
+Berdasarkan grafik yang dihasilkan fungsi seasonplot tampak bahwa pada harga Open, High, Low, dan Close memiliki bentuk grafik yang mirip dan tidak ada pola musiman 
+Sedangkan untuk data Volume perlu dikaji lebih lanjut (??)
+
+# Pemulusan
+Diduga dari plot awal data, data memiliki unsur trend sehingga akan cocok menggunakan pemulusan data trend namun untuk membuktikan apakah hal itu benar, akan dilakukan 2 metode pemulusan yaitu menggunakan Single Moving Average dan Double Moving Average
+
+## Single Moving Average
+### Pembagian Data
+Data Latih 80% data awal
+Data Uji 20% data awal
+```{r}
+training_data <- gas.imp[1:293,]
+testing_data <- gas.imp[294:366,]
+train_ma.ts <- ts(training_data$High) #Menggunakan contoh High Price 
+test_ma.ts <- ts(testing_data$High)
+```
+
+### Eksplorasi Data
+```{r}
+#eksplorasi keseluruhan data
+plot(gashigh.ts, col="red",main="Plot semua data")
+points(gashigh.ts)
+
+#eksplorasi data latih
+plot(train_ma.ts, col="blue",main="Plot data latih")
+points(train_ma.ts)
+
+#eksplorasi data uji
+plot(test_ma.ts, col="green",main="Plot data uji")
+points(test_ma.ts)
+```
+
+```{r}
+#Eksplorasi dengan GGPLOT
+library(ggplot2)
+ggplot() + 
+  geom_line(data = training_data, aes(x = Period, y = training_data$High, col = "Data Latih")) +
+  geom_line(data = testing_data, aes(x = Period, y = testing_data$High, col = "Data Uji")) +
+  labs(x = "Periode Waktu", y = "Sales", color = "Legend") +
+  scale_colour_manual(name="Keterangan:", breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + theme(legend.position = "bottom",
+                     plot.caption = element_text(hjust=0.5, size=12))
+```
+
+```{r}
+data.sma<-SMA(train_ma.ts, n=6)
+data.sma
+
+data.ramal<-c(NA,data.sma)
+data.ramal #forecast 1 periode ke depan
+```
+
+Selanjutnya akan dilakukan peramalan sejumlah data uji yaitu 73 periode. Pada metode SMA, hasil peramalan 73 periode ke depan akan bernilai sama dengan hasil peramalan 1 periode kedepan. Dalam hal ini akan dilakukan pengguabungan data aktual train, data hasil pemulusan dan data hasil ramalan 73 periode kedepan.
+```{r}
+data.gab<-cbind(aktual=c(train_ma.ts,rep(NA,73)),pemulusan=c(data.sma,rep(NA,73)),ramalan=c(data.ramal,rep(data.ramal[length(data.ramal)],73)))
+data.gab #forecast 73 periode ke depan
+```
+
+Adapun plot data deret waktu dari hasil peramalan yang dilakukan adalah sebagai berikut.
+```{r}
+ts.plot(gashigh.ts, xlab="Time Period ", ylab="High Price", main= "SMA N=6 High Price Natural Gas")
+points(gashigh.ts)
+lines(data.gab[,2],col="green",lwd=2)
+lines(data.gab[,3],col="red",lwd=2)
+legend("topleft",c("data aktual","data pemulusan","data peramalan"), lty=8, col=c("black","green","red"), cex=0.5)
+```
+
+### Perhitungan Akurasi 
+Selanjutnya perhitungan akurasi dilakukan dengan ukuran akurasi Sum Squares Error (SSE), Mean Square Error (MSE) dan Mean Absolute Percentage Error (MAPE). Perhitungan akurasi dilakukan baik pada data latih maupun pada data uji.
+```{r}
+#Menghitung nilai keakuratan data latih
+error_train.sma = train_ma.ts-data.ramal[1:length(train_ma.ts)]
+SSE_train.sma = sum(error_train.sma[5:length(train_ma.ts)]^2)
+MSE_train.sma = mean(error_train.sma[5:length(train_ma.ts)]^2)
+MAPE_train.sma = mean(abs((error_train.sma[5:length(train_ma.ts)]/train_ma.ts[5:length(train_ma.ts)])*100))
+
+akurasi_train.sma <- matrix(c(SSE_train.sma, MSE_train.sma, MAPE_train.sma))
+row.names(akurasi_train.sma)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.sma) <- c("Akurasi m = 6")
+akurasi_train.sma
+```
+
+```{r}
+#Menghitung nilai keakuratan data uji
+error_test.sma = test_ma.ts-data.gab[294:366,3]
+SSE_test.sma = sum(error_test.sma^2)
+MSE_test.sma = mean(error_test.sma^2)
+MAPE_test.sma = mean(abs((error_test.sma/test_ma.ts*100)))
+
+akurasi_test.sma <- matrix(c(SSE_test.sma, MSE_test.sma, MAPE_test.sma))
+row.names(akurasi_test.sma)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi_test.sma) <- c("Akurasi m = 6")
+akurasi_test.sma
+```
+
+Tampak bahwa menggunakan SMA kurang cocok untuk data tersebut 
+
+## Double Moving Average
+### Pembagian Data
+Data Latih 80% data awal
+Data Uji 20% data awal
+```{r}
+training_data <- gas.imp[1:293,]
+testing_data <- gas.imp[294:366,]
+train_ma.ts <- ts(training_data$High) #Menggunakan contoh High Price 
+test_ma.ts <- ts(testing_data$High)
+```
+
+### Eksplorasi Data
+```{r}
+#eksplorasi keseluruhan data
+plot(gashigh.ts, col="red",main="Plot semua data")
+points(gashigh.ts)
+
+#eksplorasi data latih
+plot(train_ma.ts, col="blue",main="Plot data latih")
+points(train_ma.ts)
+
+#eksplorasi data uji
+plot(test_ma.ts, col="green",main="Plot data uji")
+points(test_ma.ts)
+```
+
+```{r}
+#Eksplorasi dengan GGPLOT
+library(ggplot2)
+ggplot() + 
+  geom_line(data = training_data, aes(x = Period, y = training_data$High, col = "Data Latih")) +
+  geom_line(data = testing_data, aes(x = Period, y = testing_data$High, col = "Data Uji")) +
+  labs(x = "Periode Waktu", y = "Sales", color = "Legend") +
+  scale_colour_manual(name="Keterangan:", breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + theme(legend.position = "bottom",
+                     plot.caption = element_text(hjust=0.5, size=12))
+```
+
+```{r}
+dma <- SMA(data.sma, n = 6)
+At <- 2*data.sma - dma
+Bt <- 2/(4-1)*(data.sma - dma)
+data.dma<- At+Bt
+data.ramal2<- c(NA, data.dma)
+
+t = 1:73
+f = c()
+
+for (i in t) {
+  f[i] = At[length(At)] + Bt[length(Bt)]*(i)
+}
+
+data.gab2 <- cbind(aktual = c(train_ma.ts,rep(NA,73)), pemulusan1 = c(data.sma,rep(NA,73)),pemulusan2 = c(data.dma, rep(NA,73)),At = c(At, rep(NA,73)), Bt = c(Bt,rep(NA,73)),ramalan = c(data.ramal2, f[-1]))
+data.gab2
+```
+
+Hasil pemulusan menggunakan metode DMA divisualisasikan sebagai berikut
+```{r}
+ts.plot(gashigh.ts, xlab="Time Period ", ylab="High Price", main= "DMA N=6 High Price")
+points(gashigh.ts)
+lines(data.gab2[,3],col="green",lwd=2)
+lines(data.gab2[,6],col="red",lwd=2)
+legend("topleft",c("data aktual","data pemulusan","data peramalan"), lty=8, col=c("black","green","red"), cex=0.8)
+```
+
+Selanjutnya perhitungan akurasi dilakukan baik pada data latih maupun data uji. Perhitungan akurasi dilakukan dengan ukuran akurasi SSE, MSE dan MAPE.
+```{r}
+#Menghitung nilai keakuratan data latih
+error_train.dma = train_ma.ts-data.ramal2[1:length(train_ma.ts)]
+SSE_train.dma = sum(error_train.dma[8:length(train_ma.ts)]^2)
+MSE_train.dma = mean(error_train.dma[8:length(train_ma.ts)]^2)
+MAPE_train.dma = mean(abs((error_train.dma[8:length(train_ma.ts)]/train_ma.ts[8:length(train_ma.ts)])*100))
+
+akurasi_train.dma <- matrix(c(SSE_train.dma, MSE_train.dma, MAPE_train.dma))
+row.names(akurasi_train.dma)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.dma) <- c("Akurasi m = 6")
+akurasi_train.dma
+```
+
+```{r}
+#Menghitung nilai keakuratan data uji
+error_test.dma = test_ma.ts-data.gab2[294:366,6]
+SSE_test.dma = sum(error_test.dma^2)
+MSE_test.dma = mean(error_test.dma^2)
+MAPE_test.dma = mean(abs((error_test.dma/test_ma.ts*100)))
+
+akurasi_test.dma <- matrix(c(SSE_test.dma, MSE_test.dma, MAPE_test.dma))
+row.names(akurasi_test.dma)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi_test.dma) <- c("Akurasi m = 6")
+akurasi_test.dma
+```
