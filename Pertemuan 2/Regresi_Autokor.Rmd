@@ -1,1 +1,299 @@
+---
+title: "Penanganan Autokorelasi"
+author: "Hanifa Rahmacindia Nasution"
+date: "2023-09-10"
+output: html_document
+---
 
+```{r}
+library(dplyr)
+library(TTR)
+library(forecast)
+library(lmtest) #digunakan untuk uji formal pendeteksian autokorelasi
+library(orcutt) #untuk membuat model regresi Cochrane-Orcutt
+library(HoRM) #untuk membuat model regresi Hildreth-Lu
+```
+
+# Input Data
+
+Berdasarkan dari data awal, saya hanya mengambil data dengan fips 1009 pada kumpulan data testing dengan rentang waktu dari 1 Januari 2019 sampai 31 Desember 2020
+
+```{r}
+library(readxl)
+data2<- read_excel("E:/KULIAH/Semester 5/Analisis Deret Waktu/Data/Pertemuan 2/Data 2.xlsx")
+View(data2)
+str(data2)
+summary(data2)
+```
+
+# Eksplorasi Data
+
+```{r}
+#Membentuk objek time series
+data.ts<-ts(data2)
+data.ts
+
+TS.ts <- ts(data2$TS)
+TS.ts
+
+#Membuat plot time series
+ts.plot(TS.ts, xlab="Time Period ", ylab="Earth Skin Temperature", main= "Time Series Plot of TS")
+points(data.ts)
+```
+
+# Regresi
+## Penjelasan Peubah 
+Peubah Penjelas (Y)
+TS = Earth Skin Temperature (C)
+
+Peubah Respon (X)
+WS10M = Wind Speed 10 m (m/s)
+PRECTOT = Precipitation Total (mm/day)
+WS50M = Wind Speed 50 m (m/s)
+T2M = Temperature at 2 meters (C)
+PS = Surface Pressure (KPa)
+T2MWET = Wet Bulb Temperature ar 2 Meters (C)
+T2MDEW = Dew Frost Point at 2 Meters
+
+```{r}
+# Model Regresi Awal
+#model regresi
+model<- lm(TS~WS10M+PRECTOT+WS50M+T2M+PS+T2MWET+T2MDEW, data = data2)
+summary(model)
+```
+
+Model yang dihasilkan adalah $$y_i=-1.9482-.06685x1_t+0.0019x2_t+0.4525x3_t+0.9961x4_t-0.0278x5_t-0.0375x6_t-0.0522x7_t$$ Berdasarkan ringkasan model dapat diketahui bahwa hasil uji F memiliki *p-value* \< $\alpha$ (5%). Artinya, minimal terdapat satu variabel yang berpengaruh nyata terhadap model. Hasil uji-t parsial kedua parameter regresi, yaitu 3 dari 6 koefisien regresi juga menunjukkan hal yang sama, yaitu memiliki *p-value* \< $\alpha$ (5%) sehingga nyata dalam taraf 5%. Selanjutnya dapat dilihat juga nilai $R^2=0.999$. Artinya, sebesar 99.9% keragaman nilai TS dapat dijelaskan oleh peubah WS10M, PRECTOT, WS50M, T2M, PS, T2MWET, dan T2MDEW. Hasil ini menunjukkan hasil yang bagus, seolah mendapatkan hasil terbaik. Namun, kita perlu melakukan uji terhadap sisaannya seperti berikut ini.
+
+```{r}
+#sisaan dan fitted value
+sisaan<- residuals(model)
+fitValue<- predict(model)
+
+#Diagnostik dengan eksploratif data peubah respon
+par(mfrow = c(3,3))
+qqnorm(sisaan)
+qqline(sisaan, col = "steelblue", lwd = 2)
+plot(fitValue, sisaan, col = "steelblue", pch = 20, xlab = "Sisaan", ylab = "Fitted Values", main = "Sisaan vs Fitted Values")
+abline(a = 0, b = 0, lwd = 2)
+hist(sisaan, col = "steelblue")
+plot(seq(1,731,1), sisaan, col = "steelblue", pch = 20, xlab = "Sisaan", ylab = "Order", main = "Sisaan vs Order")
+lines(seq(1,731,1), sisaan, col = "red")
+abline(a = 0, b = 0, lwd = 2)
+```
+Dua plot di samping kiri digunakan untuk melihat apakah sisaan menyebar normal. Normal Q-Q Plot di atas menunjukkan bahwa sisaan tidak menyebar normal dan tampak menjulur ke kiri, serta histogram dari sisaan tidak menunjukkan demikian. Selanjutnya, dua plot di samping kanan digunakan untuk melihat autokorelasi. Plot Sisaan vs *Fitted Value* dan Plot Sisaan vs *Order* menunjukkan adanya pola pada sisaan. Untuk lebih lanjut akan digunakan uji formal melihat normalitas sisaan dan plot ACF dan PACF untuk melihat apakah ada autokorelasi atau tidak.
+
+## Menguji nilai harapan sisaan = 0
+```{r}
+t.test(resid(model),mu = 0)
+```
+Berdasarkan data tersebut nilai harapan sisaan = 0 (tidak tolak H0)
+
+## Uji Breusch Pagan
+```{r}
+lmtest::bptest(model)
+```
+Disimpulkan tolak H0, artinya ragam sisaan heterogen pada taraf nyata 5%
+
+```{r}
+#Melihat Sisaan Menyebar Normal/Tidak
+#H0: sisaan mengikuti sebaran normal
+#H1: sisaan tidak mengikuti sebaran normal
+shapiro.test(sisaan)
+ks.test(sisaan, "pnorm", mean=mean(sisaan), sd=sd(sisaan))
+```
+
+Berdasarkan uji formal Saphiro-Wilk dan Kolmogorov-Smirnov didapatkan nilai *p-value* \< $\alpha$ (5%). Artinya, cukup bukti untuk menyatakan sisaan berdistribusi tidak normal.
+
+```{r}
+#ACF dan PACF identifikasi autokorelasi
+par(mfrow = c(1,2))
+acf(sisaan)
+pacf(sisaan)
+```
+
+Berdasarkan plot ACF dan PACF, terlihat semua menabrak rentang batas dan ada yang signifikan. Namun, untuk lebih memastikan akan dilakukan uji formal dengan uji Durbin Watson.
+
+```{r}
+#Deteksi autokorelasi dengan uji-Durbin Watson
+#H0: tidak ada autokorelasi
+#H1: ada autokorelasi
+dwtest(model)
+```
+
+Berdasarkan hasil DW Test, didapatkan nilai $DW = 1.1308$ dan *p-value* = $2.2e-16$. Dikarenakan data yang cukup besar dan keterbatasan tabel Durbin Watson maka patokan tolak atau terima H0 didasarkan pada nilai p-value. Namun, dengan nilai *p-value* \< 0.05 dapat disimpulkan bahwa tolak H0, cukup bukti mengatakan adanya autokorelasi. Oleh karena itu, diperlukan penangan autokorelasi. Penanganan yang akan digunakan menggunakan dua metode, yaitu Cochrane-Orcutt dan Hildret-Lu.
+
+# Penanganan Autokorelasi
+
+## Metode Cochrane-Orcutt
+
+Penanganan metode Cochrane-Orcutt dapat dilakukan dengan bantuan packages Orcutt pada aplikasi `R` maupun secara manual. Berikut ini ditampilkan cara menggunakan bantuan `library` *packages* `Orcutt`.
+
+```{r}
+#Penanganan Autokorelasi Cochrane-Orcutt
+modelCO<-cochrane.orcutt(model)
+modelCO
+```
+
+Hasil keluaran model setelah dilakukan penanganan adalah sebagai berikut. $$y_i=-2.269612-0.883174x1_t-0.001355x2_t-0.001355x3_t+0.570760x4_t+0.976097x5_t-0.029726x6_t-0.063868x7_t+0.091032x7_t$$ Hasil juga menunjukkan bahwa nilai DW dan p-value meningkat menjadi $1.99043$ dan $0.4397$ yang mana nilai *p-value* \> 0.05. sehingga dapat diartikan  belum cukup bukti menyatakan bahwa sisaan terdapat autokorelasi pada taraf nyata 5%. Untuk nilai $ρ ̂$ optimum yang digunakan adalah $0.561386$. Nilai tersebut dapat diketahui dengan *syntax* berikut.
+
+```{r}
+#Rho optimum
+rho<- modelCO$rho
+rho
+```
+
+Selanjutnya akan dilakukan transformasi secara manual dengan syntax berikut ini.
+
+```{r}
+#Transformasi Manual
+TS.trans<- data2$TS[-1]-data2$TS[-731]*rho
+WS10M.trans<- data2$WS10M[-1]-data2$WS10M[-731]*rho
+PRECTOT.trans<- data2$PRECTOT[-1]-data2$PRECTOT[-731]*rho
+WS50M.trans<- data2$WS50M[-1]-data2$WS50M[-731]*rho
+T2M.trans<- data2$T2M[-1]-data2$T2M[-731]*rho
+PS.trans<- data2$PS[-1]-data2$PS[-731]*rho
+T2MWET.trans<- data2$T2MWET[-1]-data2$T2MWET[-731]*rho
+T2MDEW.trans<- data2$T2MDEW[-1]-data2$T2MDEW[-731]*rho
+modelTSmanual<- lm(TS.trans~WS10M.trans+PRECTOT.trans+WS50M.trans+T2M.trans+PS.trans+T2MWET.trans+T2MDEW.trans)
+summary(modelTSmanual)
+```
+
+Hasil model transformasi bukan merupakan model sesungguhnya. Koefisien regresi masih perlu dicari kembali mengikuti $β_0^*=β_0+ρ ̂β_0$ dan $β_1^*=β_1$.
+
+```{r}
+#Mencari Penduga Koefisien Regresi setelah Transformasi ke Persamaan Awal
+b0bintang <- modelTSmanual$coefficients
+b0 <- b0bintang/(1-rho)
+bi <- modelTSmanual$coefficients[-1]
+b0
+bi
+```
+
+Hasil perhitungan koefisien regresi tersebut akan menghasilkan hasil yang sama dengan model yang dihasilkan menggunakan *packages*.
+
+Pada awal eksplorasi didapat data tidak menyebar normal menurut uji Shapiro, namun dikatakan bahwa jika terdapat beberapa asumsi yang dilanggar alangkah baiknya asumsi autokorelasi ditangani terlebih dahulu karena umumnya penanganan autokorelasi akan berdampak ke kondisi data lainnya.
+
+## Pembuktian bahwa autokorelasi dapat menangani asumsi kenormalan juga
+```{r}
+#sisaan dan fitted value
+sisaan<- residuals(modelCO)
+fitValue<- predict(modelCO)
+
+#Diagnostik dengan eksploratif data peubah respon
+par(mfrow = c(1,2))
+qqnorm(sisaan)
+qqline(sisaan, col = "steelblue", lwd = 2)
+plot(fitValue, sisaan, col = "steelblue", pch = 20, xlab = "Sisaan", ylab = "Fitted Values", main = "Sisaan vs Fitted Values")
+abline(a = 0, b = 0, lwd = 2)
+hist(sisaan, col = "steelblue")
+plot(seq(1,731,1), sisaan, col = "steelblue", pch = 20, xlab = "Sisaan", ylab = "Order", main = "Sisaan vs Order")
+lines(seq(1,731,1), sisaan, col = "red")
+abline(a = 0, b = 0, lwd = 2)
+```
+
+```{r}
+#Melihat Sisaan Menyebar Normal/Tidak
+#H0: sisaan mengikuti sebaran normal
+#H1: sisaan tidak mengikuti sebaran normal
+shapiro.test(sisaan)
+ks.test(sisaan, "pnorm", mean=mean(sisaan), sd=sd(sisaan))
+```
+
+## Menguji nilai harapan sisaan = 0
+```{r}
+t.test(resid(modelCO),mu = 0)
+```
+Berdasarkan data tersebut nilai harapan sisaan = 0 (tidak tolak H0)
+
+## Uji Breusch Pagan
+```{r}
+lmtest::bptest(modelCO)
+```
+Disimpulkan tolak H0, artinya ragam sisaan heterogen pada taraf nyata 5%
+sehingga dapat disimpulkan bahwa penanganan autokorelasi dapat menyelesaikan permasalahan kenormalan juga karena tampak nilai p-value uji kolmogorov smirnov meningkat dari sebelumnya meskipun belum tertangani sepenuhnya diduga karena data terlalu besar dan oerlu penanganan khusus.
+
+
+### Metode Hildreth-Lu
+
+Penanganan kedua adalah menggunakan metode Hildreth-Lu. Metode ini akan mencari nilai SSE terkecil dan dapat dicari secara manual maupun menggunakan packages. Jika menggunakan packages, gunakan `library` *packages* `HORM`.
+
+```{r}
+#Penanganan Autokorelasi Hildreth lu
+# Hildreth-Lu
+hildreth.lu.func<- function(r, model){
+  x <- model.matrix(model)[,-1]
+  y <- model.response(model.frame(model))
+  n <- length(y)
+  t <- 2:n
+  y <- data2$TS[t]-r*data2$TS[t-1]
+  x1 <- data2$WS10M[t]-r*data2$WS10M[t-1]
+  x2 <- data2$PRECTOT[t]-r*data2$PRECTOT[t-1]
+  x3 <- data2$WS50M[t]-r*data2$WS50M[t-1]
+  x4 <- data2$T2M[t]-r*data2$T2M[t-1]
+  x5 <- data2$PS[t]-r*data2$PS[t-1]
+  x6 <- data2$T2MWET[t]-r*data2$T2MWET[t-1]
+  x7 <- data2$T2MDEW[t]-r*data2$T2MDEW[t-1]
+  
+  return(lm(y~x1+x2+x3+x4+x5+x6+x7))
+}
+
+#Pencarian rho yang meminimumkan SSE
+r <- c(seq(0.1,0.9, by= 0.1))
+tab <- data.frame("rho" = r, "SSE" = sapply(r, function(i){deviance(hildreth.lu.func(i, model))}))
+round(tab, 4)
+```
+
+Pertama-tama akan dicari di mana kira-kira $ρ$ yang menghasilkan SSE minimum. Pada hasil di atas terlihat $ρ$ minimum ketika 0.6. Namun, hasil tersebut masih kurang teliti sehingga akan dicari kembali $ρ$ yang lebih optimum dengan ketelitian yang lebih. Jika sebelumnya jarak antar $ρ$ yang dicari adalah 0.1, kali ini jarak antar $ρ$ adalah 0.001 dan dilakukan pada selang 0.4 sampai dengan 0.7.
+
+```{r}
+#Rho optimal di sekitar 0.4
+rOpt <- seq(0.4,0.7, by= 0.001)
+tabOpt <- data.frame("rho" = rOpt, "SSE" = sapply(rOpt, function(i){deviance(hildreth.lu.func(i, model))}))
+head(tabOpt[order(tabOpt$SSE),])
+
+#Grafik SSE optimum
+par(mfrow = c(1,1))
+plot(tab$SSE ~ tab$rho , type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = tabOpt[tabOpt$SSE==min(tabOpt$SSE),"rho"], lty = 2, col="red",lwd=2)
+```
+
+Perhitungan yang dilakukan aplikasi `R` menunjukkan bahwa nilai $ρ$ optimum, yaitu saat SSE terkecil terdapat pada nilai $ρ=0.561$. Hal tersebut juga ditunjukkan pada plot. Selanjutnya, model dapat didapatkan dengan mengevaluasi nilai $ρ$ ke dalam fungsi `hildreth.lu.func`, serta dilanjutkan dengan pengujian autokorelasi dengan uji Durbin-Watson. Namun, setelah pengecekan tersebut tidak lupa koefisien regresi tersebut digunakan untuk transformasi balik. Persamaan hasil transformasi itulah yang menjadi persamaan sesungguhnya.
+
+```{r}
+#Model terbaik
+modelHL <- hildreth.lu.func(0.561, model)
+summary(modelHL)
+
+#Transformasi Balik
+cat("y = ", coef(modelHL)[1]/(1-0.561), "+", coef(modelHL)[2],"x1", "+", coef(modelHL)[3],"x2","+", coef(modelHL)[4],"x3","+", coef(modelHL)[5],"x4","+", coef(modelHL)[6],"x5", "+", coef(modelHL)[7],"x6", "+", coef(modelHL)[8],"x7", sep = "")
+```
+
+Setelah dilakukan tranformasi balik, didapatkan model dengan metode Hildreth-Lu sebagai berikut. $$y_i=2.268647-0.8830654x1_t-0.001353212x2_t+0.5706991x3_t+0.9761286x4_t-0.02971907x5_t-0.06385324x6_t++0.09100043x7_t$$
+
+```{r}
+#Deteksi autokorelasi
+dwtest(modelHL)
+```
+Hasil uji Durbin-Watson juga menunjukkan bawah nilai DW sebesar $1.9899$ berada pada selang daerah tidak ada autokorelasi,  Hal tersebut juga didukung oleh *p-value* sebesar $0.4369$, di mana *p-value* \> $\alpha$=5%. Artinya tak tolak $H_0$ atau belum cukup bukti menyatakan bahwa ada autokorelasi dalam data nilai TS dengan metode Hildreth-Lu pada taraf nyata 5%.
+
+Terakhir, akan dibandingkan nilai SSE dari ketiga metode (metode awal, metode Cochrane-Orcutt, dan Hildreth-Lu).
+
+```{r}
+#Perbandingan
+sseModelawal <- anova(model)$`Sum Sq`[-c(1:2,4:10)]
+sseModelCO <- anova(modelTSmanual)$`Sum Sq`[-c(1:2,4:10)]
+sseModelHL <- anova(modelHL)$`Sum Sq`[-c(1:2,4:10)]
+mseModelawal <- sseModelawal/length(data2$TS)
+mseModelCO <- sseModelCO/length(data2$TS)
+mseModelHL <- sseModelHL/length(data2$TS)
+akurasi <- matrix(c(sseModelawal,sseModelCO,sseModelHL,
+                    mseModelawal,mseModelCO,mseModelHL),nrow=2,ncol=3,byrow = T)
+colnames(akurasi) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi) <- c("SSE","MSE")
+akurasi
+```
+
+Berdasarkan hasil tersebut dapat diketahui bahwa hasil penanganan autokorelasi dengan metode Cochrane-Orcutt dan Hildreth-Lu memiliki SSE yang hampir sama, sebesar $0.4260251$ untuk Cochrane Orcutt dan $0.4262042$ untuk Hildreth-Lu dan lebih baik dibandingkan model awal ketika autokorelasi masih terjadi, yaitu sebesar $1.251711$.
+
+# Kesimpulan
+Autokorelasi yang terdapat pada data TS (Earth Skin Temperature (C)) terjadi akibat adanya korelasi di antara unsur penyusunnya. Indikator TS yang erat hubungannya dengan data kecepatan angin dan kelembapan udara sangat rawan menjadi penyebab adanya autokorelasi. Adanya autokorelasi menyebabkan model regresi kurang baik karena akan meingkatkan galatnya. Autokorelasi dapat dideteksi secara eksploratif melalui plot sisaan, ACF, dan PACF, serta dengan uji formal Durbin-Watson. Namun, autokorelasi tersebut dapat ditangani dengan metode Cochrane-Orcutt dan Hildreth-Lu. Kedua metode menghasilkan nilai SSE yang hampir sama, artinya keduanya baik untuk digunakan.
