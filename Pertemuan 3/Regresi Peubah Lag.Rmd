@@ -1,1 +1,354 @@
+---
+title: "Regresi Peubah Lag"
+author: "G1401211094 Hanifa Rahmacindia Nasution"
+date: "2023-09-17"
+output: html_document
+---
 
+# Regresi Peubah Lag Sederhana
+
+## Loading Packages
+
+```{r}
+library(dLagM)
+library(dynlm)
+library(MLmetrics)
+library(lmtest)
+library(car)
+```
+
+## Input Data
+
+```{r}
+data <- rio::import("https://raw.githubusercontent.com/HanifaNasution/Praktikum-MPDW/main/Pertemuan%203/Data%203_Regresi%20Lag%20Sederhana.csv")
+str(data)
+data
+```
+
+## Pembagian Data
+
+80% data sebagai data training
+
+20% data sebagai data testing
+
+total data 731 baris
+
+baris 1-585 sebagai data training
+
+baris 586-731 sebagai data testing
+
+```{r}
+#SPLIT DATA
+train<-data[1:585,]
+test<-data[586:731,]
+```
+
+```{r}
+#data time series
+train.ts<-ts(train)
+test.ts<-ts(test)
+data.ts<-ts(data)
+```
+
+### Model Koyck
+
+Model Koyck didasarkan pada asumsi bahwa semakin jauh jarak lag peubah independen dari periode sekarang maka semakin kecil pengaruh peubah lag terhadap peubah dependen.
+
+Koyck mengusulkan suatu metode untuk menduga model dinamis distributed lag dengan mengasumsikan bahwa semua koefisien $\beta$ mempunyai tanda sama.
+
+Model kyock merupakan jenis paling umum dari model infinite distributed lag dan juga dikenal sebagai geometric lag
+
+$$
+y_t=a(1-\lambda)+\beta_0X_t+\beta_1Z_t+\lambda Y_{t-1}+V_t
+$$
+
+dengan $$V_t=u_t-\lambda u_{t-1}$$
+
+#### Pemodelan
+
+Pemodelan model Koyck dengan `R` dapat menggunakan `dLagM::koyckDlm()`
+
+Fungsi `koyckDlm()` akan menerapkan model lag terdistribusi dengan transformasi Koyck satu prediktor. Nilai `x` dan `y` tidak perlu sebagai objek *time series* (`ts`). `intercept` dapat dibuat `TRUE` untuk memasukkan intersep ke dalam model.
+
+```{r}
+# Model Koyck
+model.koyck <- koyckDlm(x = train$`T2MDEW (Xt)`, y = train$`TS (Yt)`)
+summary(model.koyck)
+AIC(model.koyck)
+BIC(model.koyck)
+```
+
+Dari hasil tersebut, didapat bahwa peubah $x_t$ dan $y_{t-1}$ memiliki nilai $P-Value<0.05$. Hal ini menunjukkan bahwa peubah $x_t$ dan $y_{t-1}$ berpengaruh signifikan terhadap nilai $y$. Adapun model keseluruhannya adalah sebagai berikut
+
+$$
+\hat{Y_t}=1.2353-0.6541X_t+1.4269Y_{t-1}
+$$
+
+#### Peramalan dan Akurasi
+
+Berikut adalah hasil peramalan y untuk 146 periode kedepan menggunakan model koyck (146 karena banyak data test)
+
+```{r}
+fore.koyck <- forecast(model = model.koyck, x=test$`T2MDEW (Xt)`, h=146)
+fore.koyck
+mape.koyck <- MAPE(fore.koyck$forecasts, test$`TS (Yt)`)
+mape.koyck
+#akurasi data training
+GoF(model.koyck)
+```
+
+### Regression with Distributed Lag
+
+Pemodelan model Regression with Distributed Lag dengan `R` dapat menggunakan `dLagM::dlm()`
+
+Fungsi `dlm()` akan menerapkan model lag terdistribusi dengan satu atau lebih prediktor. Nilai `x` dan `y` tidak perlu sebagai objek *time series* (`ts`). $q$ adalah integer yang mewakili panjang *lag* yang terbatas.
+
+Waktu yang diperlukan bagi variabel X dalam mempengaruhi variabel tak bebas Y disebut beda kala atau lag (Nurahman et al. 2016).
+
+#### Pemodelan contoh (Lag=2)
+
+```{r}
+model.dlm <- dlm(x = train$`T2MDEW (Xt)`,y = train$`TS (Yt)` , q = 2)
+summary(model.dlm)
+AIC(model.dlm)
+BIC(model.dlm)
+```
+
+Dari hasil diatas, didapat bahwa $P-value$ dari intercept dan $x_{t-2}<0.05$. Hal ini menunjukkan bahwa intercept dan $x_{t-2}$ berpengaruh signifikan terhadap $y$. Sedangkan $P-value$ dari intercept dan $x_{t-1}>0.05$ yaitu sebesar 0.835 sehingga menunjukkan bahwa intercept dan $x_{t-1}$ tidak berpengaruh signifikan terhadap $y$. 
+Adapun model keseluruhan yang terbentuk adalah sebagai berikut
+
+$$
+\hat{Y_t}=2.361024+0.935912X_t-0.008154X_{t-1}+0.213075X_{t-2}
+$$
+
+#### Peramalan dan Akurasi
+
+Berikut merupakan hasil peramalan $y$ untuk 146 periode kedepan (146 karena banyak data test)
+
+```{r}
+fore.dlm <- forecast(model = model.dlm, x=test$`T2MDEW (Xt)`, h=146)
+fore.dlm
+mape.dlm <- MAPE(fore.dlm$forecasts, test$`TS (Yt)`)
+mape.dlm
+#akurasi data training
+GoF(model.dlm)
+```
+
+#### *Lag* Optimum
+
+```{r}
+#penentuan lag optimum 
+finiteDLMauto(formula = TS..Yt. ~ T2MDEW..Xt.,
+              data = data.frame(train), q.min = 1, q.max = 583,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+
+Banyak data train sebesar 585 data dan q max = banyak data train - 2 (dari error misal q max > banyak data train - 2)
+sehingga didapat q max = 585 - 2 = 583
+Berdasarkan output tersebut, lag optimum didapatkan ketika lag=291. Selanjutnya dilakukan pemodelan untuk lag = 291
+
+```{r}
+#model dlm dengan lag optimum
+options(max.print=3000) # agar bisa banyak dan keseluruhan data
+model.dlm2 <- dlm(x = train$`T2MDEW (Xt)`,y = train$`TS (Yt)` , q = 291)
+summary(model.dlm2)
+AIC(model.dlm2)
+BIC(model.dlm2)
+```
+
+Dari hasil tersebut terdapat beberapa peubah yang berpengaruh signifikan terhadap taraf nyata 5% yaitu $x_t$. Adapun keseluruhan model yang terbentuk adalah
+
+$$
+\hat{Y_t}=1.604e^1+9.966e^{-1}X_t+...+1.106e^{-2}X_{t-291}
+$$
+```{r}
+#peramalan dan akurasi
+fore.dlm2 <- forecast(model = model.dlm2, x=test$`T2MDEW (Xt)`, h=146)
+fore.dlm2
+mape.dlm2<- MAPE(fore.dlm2$forecasts, test$`TS (Yt)`)
+mape.dlm2
+#akurasi data training
+GoF(model.dlm2)
+```
+
+Model tersebut merupakan model yang sangat tidak baik karena MAPE data test sebesar 0,92. Sedangkan MAPE data train sebesar 0.0023 atau bisa diindikasikan terjadi overfitting. 
+Sementara dilakukan pemotongan panjang lag untuk menanggulangi hal tersebut.
+
+```{r}
+#penentuan lag optimum menangani overfitting
+finiteDLMauto(formula = TS..Yt. ~ T2MDEW..Xt.,
+              data = data.frame(train), q.min = 1, q.max = 33,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+Didapat optimum lag sebesar 33
+
+```{r}
+#model dlm dengan lag optimum
+model.dlm2_potonglag <- dlm(x = train$`T2MDEW (Xt)`,y = train$`TS (Yt)` , q = 33)
+summary(model.dlm2_potonglag)
+AIC(model.dlm2_potonglag)
+BIC(model.dlm2_potonglag)
+```
+
+Dari hasil tersebut terdapat beberapa peubah yang berpengaruh signifikan terhadap taraf nyata 5% yaitu $x_t$ , $x_{t-33}$. Adapun keseluruhan model yang terbentuk adalah
+
+$$
+\hat{Y_t}=6.358e^{-1}+7.537e^{-1}X_t+...+4.942e^{-2}X_{t-33}
+$$
+
+Adapun hasil peramalan 146 periode kedepan menggunakan model tersebut adalah sebagai berikut (146 sebanyak data test)
+
+```{r}
+#peramalan dan akurasi
+fore.dlm2_potonglag <- forecast(model = model.dlm2_potonglag, x=test$`T2MDEW (Xt)`, h=146)
+fore.dlm2_potonglag
+mape.dlm2_potonglag<- MAPE(fore.dlm2_potonglag$forecasts, test$`TS (Yt)`)
+mape.dlm2_potonglag
+#akurasi data training
+GoF(model.dlm2_potonglag)
+```
+Model tersebut merupakan model yang baik dengan nilai MAPE yang 17%. Sedangkan MAPE data train sebesar 12% yang mana nilai MAPE antara keduanya tidak berbeda jauh sehingga diindikasikan tidak terjadi overfitting maupun underfitting.
+
+### Model Autoregressive
+
+Peubah dependen dipengaruhi oleh peubah independen pada waktu sekarang, serta dipengaruhi juga oleh peubah dependen itu sendiri pada satu waktu yang lalu maka model tersebut disebut *autoregressive* (Gujarati 2004).
+
+#### Pemodelan
+
+Pemodelan Autoregressive dilakukan menggunakan fungsi `dLagM::ardlDlm()` . Fungsi tersebut akan menerapkan *autoregressive* berordo $(p,q)$ dengan satu prediktor. 
+
+Dengan $p$ adalah integer yang mewakili panjang *lag* yang terbatas dan $q$ adalah integer yang merepresentasikan ordo dari proses *autoregressive*.
+
+p = panjang lag x (peubah dependen dipengaruhi beberapa waktu yang lalu dari peubah indipenden) contoh p = 3 berarti xtminus nya sampai xt-3 
+q = ordo autoregressive (peubah dependen dipengaruhi beberapa waktu yang lalu dari peubah dependen itu sendiri) contoh q = 1 berarti ytminus nya sampai yt-1
+
+```{r}
+model.ardl <- ardlDlm(x = train$`T2MDEW (Xt)`, y = train$`TS (Yt)`, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+Hasil di atas menunjukkan bahwa semua hasil uji t menunjukkan nilai-p pada peubah $<0.05$. Hal ini menunjukkan bahwa peubah $x_t$, $x_{t-1}$, dan $y_{t-1}$ berpengaruh signifikan terhadap $y_t$.Model keseluruhannya adalah sebagai berikut:
+
+$$
+\hat{Y}=0.32851+0.71848X_t-0.59208X_{t-1}+0.88614Y_{t-1}
+$$
+
+#### Peramalan dan Akurasi
+
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test$`T2MDEW (Xt)`, h=146)
+fore.ardl
+```
+
+Data di atas merupakan hasil peramalan untuk 146 periode ke depan menggunakan Model Autoregressive dengan $p=1$ dan $q=1$.
+
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test$`TS (Yt)`)
+mape.ardl
+#akurasi data training
+GoF(model.ardl)
+```
+
+Berdasarkan akurasi di atas, terlihat bahwa nilai MAPE keduanya tidak jauh berbeda. Artinya, model regresi dengan distribusi lag ini tidak `overfitted` atau `underfitted`
+Namun, model tidak terlalu bagus karena nilai MAPE cukup tinggi, yakni sebesar 23%
+
+#### *Lag* Optimum
+
+```{r}
+#penentuan lag optimum
+model.ardl.opt <- ardlBoundOrders(data = data.frame(train), ic = "AIC", 
+                                  formula = TS..Yt. ~ T2MDEW..Xt. )
+min_p=c()
+
+### ERROR ###
+### for(i in 1:585){
+#  min_p[i]=min(model.ardl.opt$Stat.table[[i]])
+#} 
+#q_opt=which(min_p==min(min_p, na.rm = TRUE))
+#p_opt=which(model.ardl.opt$Stat.table[[q_opt]] == 
+#              min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+#data.frame("q_optimum" = q_opt, "p_optimum" = p_opt, 
+#           "AIC"=model.ardl.opt$min.Stat)
+```
+
+```{r}
+pqop<-ardlBoundOrders(data = data.frame(train) , ic = "AIC", formula = TS..Yt. ~ T2MDEW..Xt. )
+c(p=pqop$p, q=pqop$q)
+```
+
+Dari tabel di atas, dapat terlihat bahwa nilai AIC terendah didapat ketika $p=3$ dan $q=15$, Artinya, model autoregressive optimum didapat ketika $p=3$ dan $q=15$.
+
+Selanjutnya dapat dilakukan pemodelan dengan nilai $p$ dan $q$ optimum seperti inisialisasi di langkah sebelumnya.
+
+```{r}
+model.ardl_optimum <- ardlDlm(x = train$`T2MDEW (Xt)`, y = train$`TS (Yt)`, p = 3 , q = 15)
+summary(model.ardl_optimum)
+AIC(model.ardl_optimum)
+BIC(model.ardl_optimum)
+```
+Hasil di atas menunjukkan bahwa hasil uji t peubah $x_t$, $x_{t-1}$, $y_{t-1}$, $y_{t-4}$, dan $y_{t-15}$ menunjukkan nilai-p pada peubah $<0.05$. Hal ini menunjukkan bahwa peubah $x_t$, $x_{t-1}$, $y_{t-1}$, $y_{t-4}$, dan $y_{t-15}$ berpengaruh signifikan terhadap $y_t$.Model keseluruhannya adalah sebagai berikut:
+
+$$
+\hat{Y}=0.116686+0.698259X_t-0.434442X_{t-1}+...+0.671397Y_{t-1}+...+0.047445Y_{t-15}
+$$
+```{r}
+# Peramalan 146 periode (sebanyak data test)
+fore.ardl_optimum <- forecast(model = model.ardl_optimum, x=test$`T2MDEW (Xt)`, h=146)
+fore.ardl_optimum
+```
+
+```{r}
+mape.ardl_optimum <- MAPE(fore.ardl_optimum$forecasts, test$`TS (Yt)`)
+mape.ardl_optimum
+#akurasi data training
+GoF(model.ardl_optimum)
+```
+Didapat nilai MAPE data test sebesar 27% yang mana masih kurang baik serta MAPE data train sebesar 10%. Diindikasikan terjadi overfitting pada model tersebut.
+
+### Perbandingan Model
+
+```{r}
+akurasi <- matrix(c(mape.koyck, mape.dlm, mape.dlm2, mape.dlm2_potonglag, mape.ardl, mape.ardl_optimum))
+row.names(akurasi)<- c("Koyck","DLM 1","DLM 2 (Optimum)","DLM 2 (Optimum) Penanganan Overfitting","Autoregressive", "Autoregressive Lag Optimum")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+
+Berdasarkan nilai MAPE, model paling optimum didapat pada Model DLM Lag Optimum Pasca Penanganan Overfitting dengan memotong panjang lag karena memiliki nilai MAPE yang terkecil.
+
+### Plot
+
+```{r}
+par(mfrow=c(1,1))
+plot(test$`T2MDEW (Xt)`, test$`TS (Yt)`, type="b", col="black")
+
+#Garis Koyck
+points(test$`T2MDEW (Xt)`, fore.koyck$forecasts,col="red")
+lines(test$`T2MDEW (Xt)`, fore.koyck$forecasts,col="red")
+
+#Garis DLM 1
+points(test$`T2MDEW (Xt)`, fore.dlm$forecasts,col="blue")
+lines(test$`T2MDEW (Xt)`, fore.dlm$forecasts,col="blue")
+
+#Garis DLM 2 (Optimum)
+points(test$`T2MDEW (Xt)`, fore.dlm2$forecasts,col="magenta")
+lines(test$`T2MDEW (Xt)`, fore.dlm2$forecasts,col="magenta")
+
+#Garis DLM 2 (Optimum) Penanganan Overfitting
+points(test$`T2MDEW (Xt)`, fore.dlm2_potonglag$forecasts,col="orange")
+lines(test$`T2MDEW (Xt)`, fore.dlm2_potonglag$forecasts,col="orange")
+
+# Garis Autoregressive
+points(test$`T2MDEW (Xt)`, fore.ardl$forecasts,col="green")
+lines(test$`T2MDEW (Xt)`, fore.ardl$forecasts,col="green")
+
+# Garis Autoregressive Optimum
+points(test$`T2MDEW (Xt)`, fore.ardl_optimum$forecasts,col="cyan")
+lines(test$`T2MDEW (Xt)`, fore.ardl_optimum$forecasts,col="cyan")
+
+legend("topleft",c("Aktual", "Koyck","DLM 1","DLM 2 (Optimum)", "DLM 2 (Optimum) Penanganan Overfitting","Autoregressive", "Autoregressive Optimum"), lty=1, col=c("black","red","blue","magenta","orange","green","cyan"), cex=0.8)
+```
+
+Berdasarkan plot tersebut, terlihat bahwa plot yang paling mendekati data aktualnya adalah Model DLM Lag Optimum Pasca Penanganan Overfitting dengan memotong panjang lag, sehingga dapat disimpulkan model terbaik dalam hal ini adalah model regresi DLM
