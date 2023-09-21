@@ -1,0 +1,457 @@
+---
+title: "Latihan Pembangkitan ARMA - MPDW Praktikum Pertemuan 4"
+author: "G1401211094 Hanifa Rahmacindia Nasution"
+date: "2023-09-21"
+output: html_document
+---
+
+# Pembangkitan Data sebanyak 300 data
+
+```{r}
+#Cara Manual
+set.seed(094)
+
+data <- rnorm(300)
+ts.plot(data)
+acf(data)
+pacf(data)
+```
+
+Tampak bahwa pola data tampak stasioner dalam rataan
+
+## Pembentukan Model MA(2) dengan theta1 = 0,4 dan theta2 = 0,6
+
+### Pembentukan Model MA(2) Secara Manual
+
+```{r}
+n = length(data)
+theta1 = 0.4
+theta2 = 0.6
+
+ma_manual <- data[c(1,2)]
+for(i in 3:300){
+   ma_manual[i] <- data[i] + 0.4 * data[i - 1] + 0.6 * data[i - 2]
+}
+ma_manual
+```
+
+### Pembentukan Model MA(2) Menggunakan Fungsi *arima.sim*
+
+```{r}
+#Pakai Fungsi arima.sim
+set.seed(094)
+ma2 <- arima.sim(list(order=c(0,0,2), ma=c(0.4,0.6)), n=300)
+ma2
+```
+
+### Plot Time Series MA(2)
+
+```{r}
+ts.plot(ma_manual)
+```
+
+### Plot ACF MA(2)
+
+```{r}
+acf(ma_manual, lag.max = 20)
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa plot ACF *cuts off* pada lag kedua, sejalan dengan teori yang ada
+
+### Plot PACF MA(2)
+
+```{r}
+pacf(ma_manual)
+```
+
+Berdasarkan plot PACF, terlihat plot PACF tails off dengan bentuk gelombang sinus
+
+### Plot EACF MA(2)
+
+```{r}
+TSA::eacf(ma_manual)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(0) dan ordo MA(2)
+
+Berdasarkan plot time series yang menunjukkan bergerak di nilai yang sama dan plot PACF yang membentuk gelombang sinus maka dapat diindikasikan data tersebut stasioner
+
+### Scatterplot Model MA(2) antara Yt dengan Yt-1, Yt dengan Yt-2, dan Yt dengan Yt-3
+
+#### Scatterplot Model MA(2) antara Yt dengan Yt-1
+
+```{r}
+#Data untuk Yt dengan Yt-1
+#Yt
+yt_ma1 <- ma_manual[-1]
+yt_ma1
+#Yt-1
+yt_1_ma <- ma_manual[-300]
+yt_1_ma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-1
+plot(y=yt_ma1,x=yt_1_ma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-1
+coryt1ma <- cor(yt_ma1,yt_1_ma)
+coryt1ma
+```
+
+#### Scatterplot Model MA(2) antara Yt dengan Yt-2
+
+```{r}
+#Data untuk Yt dengan Yt-2
+#Yt
+yt_ma2 <- ma_manual[-c(1,2)]
+yt_ma2
+#Yt-2
+yt_2_ma <- ma_manual[-c(299,300)]
+yt_2_ma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-2
+plot(y=yt_ma2,x=yt_2_ma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-2
+coryt2ma <- cor(yt_ma2,yt_2_ma)
+coryt2ma
+```
+
+#### Scatterplot Model MA(2) antara Yt dengan Yt-3
+
+```{r}
+#Data untuk Yt dengan Yt-3
+#Yt
+yt_ma3 <- ma_manual[-c(1,2,3)]
+yt_ma3
+#Yt-3
+yt_3_ma <- ma_manual[-c(298,299,300)]
+yt_3_ma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-3
+plot(y=yt_ma3,x=yt_3_ma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-3
+coryt3ma <- cor(yt_ma3,yt_3_ma)
+coryt3ma
+```
+
+## Pembentukan Model AR(2) dengan phi1 = 0,5 dan phi2 = 0,2
+
+### Pembentukan Model AR(2) Secara Manual
+
+```{r}
+n = length(data)
+phi1 = 0.5
+phi2 = 0.2
+
+ar_manual <- data[c(1,2)]
+for(i in 3:300){
+   ar_manual[i] <- data[i] + 0.5 * data[i - 1] + 0.2 * data[i - 2]
+}
+ar_manual
+```
+
+### Pembentukan Model AR(2) Menggunakan Fungsi *arima.sim*
+
+```{r}
+#Pakai Fungsi arima.sim
+set.seed(094)
+ar2 <- arima.sim(list(order=c(2,0,0), ar=c(0.5,0.2)), n=300)
+ar2
+```
+
+### Plot Time Series AR(2)
+
+```{r}
+ts.plot(ar_manual)
+```
+
+Berdasarkan plot time series, tampak bahwa pola data AR(2) stasioner dalam rataan
+
+### Plot ACF AR(2)
+
+```{r}
+acf(ar_manual, lag.max = 20)
+```
+
+Berdasarkan plot ACF, terlihat plot ACF *tails off* dengan bentuk gelombang sinus
+
+### Plot PACF AR(2)
+
+```{r}
+pacf(ar_manual, lag.max = 20)
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF *cuts off* pada lag kedua, sejalan dengan teori yang ada
+
+### Plot EACF AR(2)
+
+```{r}
+TSA::eacf(ar_manual)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(0)
+
+Berdasarkan plot time series yang menunjukkan bergerak di nilai yang sama dan plot PACF yang membentuk gelombang sinus maka dapat diindikasikan data tersebut stasioner
+
+### Buat Scatterplot Model AR(2) antara Yt dengan Yt-1, Yt dengan Yt-2, dan Yt dengan Yt-3
+
+#### Buat Scatterplot Model AR(2) antara Yt dengan Yt-1
+
+```{r}
+#Data untuk Yt dengan Yt-1
+#Yt
+yt_ar1 <- ar_manual[-1]
+yt_ar1
+#Yt-1
+yt_1_ar <- ar_manual[-300]
+yt_1_ar
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-1
+plot(y=yt_ar1,x=yt_1_ar)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-1
+coryt1ar <- cor(yt_ar1,yt_1_ar)
+coryt1ar
+```
+
+#### Buat Scatterplot Model AR(2) antara Yt dengan Yt-2
+
+```{r}
+#Data untuk Yt dengan Yt-2
+#Yt
+yt_ar2 <- ar_manual[-c(1,2)]
+yt_ar2
+#Yt-2
+yt_2_ar <- ar_manual[-c(299,300)]
+yt_2_ar
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-2
+plot(y=yt_ar2,x=yt_2_ar)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-2
+coryt2ar <- cor(yt_ar2,yt_2_ar)
+coryt2ar
+```
+
+#### Buat Scatterplot Model AR(2) antara Yt dengan Yt-3
+
+```{r}
+#Data untuk Yt dengan Yt-3
+#Yt
+yt_ar3 <- ar_manual[-c(1,2,3)]
+yt_ar3
+#Yt-3
+yt_3_ar <- ar_manual[-c(298,299,300)]
+yt_3_ar
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-3
+plot(y=yt_ar3,x=yt_3_ar)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-3
+coryt3ar <- cor(yt_ar3,yt_3_ar)
+coryt3ar
+```
+
+## Pembentukan Model ARMA(2,2) dengan phi(untuk AR) = 0.5 dan 0.2 dan tetha(untuk MA) = 0.4 dan 0.6
+
+Jika koefisien dan *white noise*/nilai deret waktu sebelumnya dapat diekstrak dalam bentuk vektor, dapat dilakukan perkalian matriks untuk mencari nilai bagian AR dan MA:
+
+```{r}
+coefs <- c(0.4, 0.6, 0.5, 0.2)
+e <- c(1, 2, 3, 4)
+
+coefs %*% e
+```
+
+Dari prinsip ini, dapat dibuat fungsi umum untuk membangkitkan data ARMA. Input dari fungsi adalah jumlah data yang hendak dibangkitkan, koefisien MA, dan koefisien AR
+
+```{r}
+arma.sim <- function(n, macoef, arcoef){
+  manum <- length(macoef)
+  arnum <- length(arcoef)
+  stopifnot(manum < n & arnum < n)
+  
+  wn <- rnorm(n, sd = 0.5)
+  init <- max(manum, arnum)
+
+  arma <- data[1:init]
+  for(i in {init+1}:n){
+   mastart <- i - manum
+   maend <- i-1
+   arstart <- i - arnum
+   arend <- i-1
+   arma[i] <- sum(arcoef * arma[arstart:arend]) + sum(macoef * data[mastart:maend])  + data[i]
+   }
+  return(arma)
+}
+```
+
+```{r}
+#Contoh pembangkitan data ARMA(2,2) menggunakan fungsi buatan dengan phi1 = 0.5 ; phi2 = 0.2 dan tetha1 = 0.4 ; tetha2 = 0.6
+set.seed(094)
+arma22 <- arma.sim(300, c(0.4, 0.6), c(0.5,0.2))
+
+par(mfrow = c(1, 2))
+acf(arma22,lag.max = 20)
+pacf(arma22,lag.max = 20)
+```
+
+### Pembentukan Model ARMA (2,2) Secara Manual Menggunakan Fungsi yang Sudah Didefinisikan Sebelumnya
+
+```{r}
+set.seed(094)
+n = length(data)
+phi1 = 0.5
+phi2 = 0.2
+theta1 = 0.4
+theta2 = 0.6
+
+y.arma=c(1:n)
+for (i in 3:n){
+  y.arma[i] = phi1*y.arma[i-1]+ phi2*y.arma[i-2] + theta1*data[i-1]+ theta2*data[i-2] +data[i]
+  }
+```
+
+### Pembentukan Model ARMA(2,2) Menggunakan Fungsi *arima.sim*
+
+Pembangkitan ARMA(p,q) juga dapat dilakukan dengan fungsi `arima.sim` sebagai berikut.
+
+```{r}
+set.seed(094)
+arma22 <- arima.sim(list(order=c(2,0,2), ar = c(0.5,0.2), ma = c(0.4,0.6)), n=300)
+arma22
+```
+
+### Karakteristik ARMA(2,2)
+
+#### Plot Time Series ARMA(2,2)
+
+```{r}
+ts.plot(y.arma)
+ts.plot(arma22)
+```
+
+Berdasarkan plot time series ARMA(2,2), tampak bahwa plot data stasioner dalam rataan
+
+#### Plot ACF ARMA(2,2)
+
+```{r}
+acf(y.arma)
+acf(arma22)
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot ACF yang *tails off*, sesuai dengan teori yang ada
+
+#### Plot PACF ARMA(2,2)
+
+```{r}
+pacf(y.arma,lag.max = 20) 
+pacf(arma22,lag.max = 20)
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot PACF yang *tails off*, sesuai dengan teori yang ada
+
+#### Plot EACF ARMA(2,2)
+
+```{r}
+TSA::eacf(y.arma)
+TSA::eacf(arma22)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, tidak terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(2). Pada plot dari fungsi *eacf(arma22)* justru tampak segitiga nol berada pada ordo AR(1) dan ordo MA(2) dimana hasil tersebut tidak sesuai dengan hasil yang diinginkan.
+
+#### Buat Scatterplot Model ARMA(2,2) antara Yt dengan Yt-1, Yt dengan Yt-2, dan Yt dengan Yt-3
+
+##### Buat Scatterplot Model ARMA(2,2) antara Yt dengan Yt-1
+
+```{r}
+#Data untuk Yt dengan Yt-1
+#Yt
+yt_arma1 <- arma22[-1]
+yt_arma1
+#Yt-1
+yt_1_arma <- arma22[-300]
+yt_1_arma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-1
+plot(y=yt_arma1,x=yt_1_arma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-1
+coryt1arma <- cor(yt_arma1,yt_1_arma)
+coryt1arma
+```
+
+##### Buat Scatterplot Model ARMA(2,2) antara Yt dengan Yt-2
+
+```{r}
+#Data untuk Yt dengan Yt-2
+#Yt
+yt_arma2 <- arma22[-c(1,2)]
+yt_arma2
+#Yt-2
+yt_2_arma <- arma22[-c(299,300)]
+yt_2_arma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-2
+plot(y=yt_arma2,x=yt_2_arma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-2
+coryt2arma <- cor(yt_arma2,yt_2_arma)
+coryt2arma
+```
+
+##### Buat Scatterplot Model ARMA(2,2) antara Yt dengan Yt-3
+
+```{r}
+#Data untuk Yt dengan Yt-3
+#Yt
+yt_arma3 <- arma22[-c(1,2,3)]
+yt_arma3
+#Yt-3
+yt_3_arma <- arma22[-c(298,299,300)]
+yt_3_arma
+```
+
+```{r}
+#Scatterplot antara Yt dengan Yt-3
+plot(y=yt_arma3,x=yt_3_arma)
+```
+
+```{r}
+#Korelasi Yt dengan Yt-3
+coryt3arma <- cor(yt_arma3,yt_3_arma)
+coryt3arma
+```
