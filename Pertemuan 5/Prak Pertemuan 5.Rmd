@@ -1,0 +1,226 @@
+---
+title: "MPDW Prak Pertemuan 5"
+author: "G1401211094 Hanifa Rahmacindia Nasution"
+date: "2023-09-26"
+output: html_document
+---
+
+Data sendiri yang awal cek stasioner ragam dan rataan
+cek data ada negatifnya apa nggak 
+motongnya gak boleh pas mau turun atau pas mau naik (karena ngaruh ke data forecastnya, kayak bakal turun misal motong pas mau turun tapi ternyata data aktualnya ehh naik)
+harusnya dipotongnya pas naik atau pas stasioner
+identifikasi aja gak usah ditanganin
+
+# Input Data
+```{r}
+library(rio)
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+
+gas <- import("https://raw.githubusercontent.com/HanifaNasution/Praktikum-MPDW/main/Data/Data%20Natural%20Gas%20Imputasi.csv")
+View(gas)
+str(gas)
+dim(gas)
+```
+
+Ubah data tanggal ke mode "date"
+```{r}
+library(dplyr)
+library(lubridate)
+library(stringr)
+gas_clean <- gas %>% 
+  mutate(Date = mdy(Date))
+str(gas_clean)
+```
+Tampak bahwa kolom tanggal telah menggunakan mode "Date" bukan "chr" lagi
+
+# Eksplorasi Data
+Ringkasan data
+```{r}
+summary(gas_clean)
+```
+
+Mengubah data agar terbaca sebagai data deret waktu
+```{r}
+gasopen.ts <- ts(gas_clean$Open)
+gashigh.ts <- ts(gas_clean$High)
+gaslow.ts <- ts(gas_clean$Low)
+gasclose.ts <- ts(gas_clean$Close)
+gasvolume.ts <- ts(gas_clean$Volume)
+```
+
+Membuat plot data deret waktu awal
+Disini saya tertarik untuk melihat plot harga bukaan saham tiap harinya sehingga hanya akan menggunakan data Gas Open
+
+# Plot Data Awal
+```{r}
+ts.plot(gasopen.ts, xlab="Time Period ", ylab="Gas Open", 
+        main = "Time Series Plot")
+points(gasopen.ts)
+```
+
+# Imputasi Data Hilang 
+```{r}
+#install.packages("imputeTS")
+library(imputeTS)
+
+gas.open<- na_interpolation(gas_clean$Open)
+ggplot_na_imputations(gas_clean$Open,gas.open)
+```
+
+# Data Penuh
+## Data Saham Gas Open Setelah Imputasi
+```{r}
+View(gas.open)
+str(gas.open)
+summary(gas.open)
+
+gasopen.ts <- ts(gas.open)
+```
+
+## Plot Time Series Data Saham Gas Open Setelah Imputasi 
+```{r}
+plot_gasopen <- plot(gasopen.ts)
+```
+
+Tampak bahwa data memiliki kecenderungan data trend, tidak konstan dalam rataan maupun ragam sehingga data termasuk dalam data tidak stasioner
+
+## Plot ACF 
+```{r}
+acf(gasopen.ts)
+```
+
+Tampak bahwa data *tails off slowly* yang menandakan data tidak stasioner
+
+## Uji ADF
+
+```{r}
+tseries::adf.test(gasopen.ts)
+```
+
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.6056 yang lebih besar dari taraf nyata 5% sehingga terima $H_0$ dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF.
+
+## Plot Box-Cox
+
+```{r}
+index <- seq(1:366)
+bc = boxcox(gasopen.ts~index, lambda = seq(0,4,by=0.01))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+Gambar di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **0.14** dan pada selang kepercayaan 95% nilai memiliki batas bawah **0.00** dan batas atas **0.49**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data penuh gasopen tidak stasioner dalam ragam.
+
+Berdasarkan plot time series, plot ACF, plot ADF, dan Uji Box Cox dapat disimpulkan bahwa data penuh saham bukaan (gasopen) tidak stasioner baik secara rataan maupun secara ragam.
+
+# Partisi
+## Bagian 1
+Berdasarkan data penuh tampak ada data bagian awal yang cukup stasioner rataan lalu setelahnya mengalami trend naik terus
+Oleh karena itu, saya mencoba untuk partisi data 1 pada data yang tampak cukup stasioner di awal
+
+### Data 
+```{r}
+dt_gasopen1 <- gas.open[1:30] |> ts()
+mean(dt_gasopen1)
+var(dt_gasopen1)
+```
+
+#### Plot Time Series 
+```{r}
+plot(dt_gasopen1)
+```
+
+Data tampak seperti memiliki trend sehingga diduga tidak stasioner baik rataan maupun ragam, namun perlu diuji lebih lanjut
+
+#### Plot ACF 
+```{r}
+acf(dt_gasopen1)
+```
+
+Tampak pada plot ACF, data partisi 1 cenderung *tails off* dan membentuk gelombang sinus sehingga data dapat dikatakan stasioner secara rataan 
+
+#### Uji ADF
+```{r}
+tseries::adf.test(dt_gasopen1)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.5766 yang lebih besar dari taraf nyata 5% sehingga terima $H_0$ dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini tidak sesuai dengan hasil eksplorasi menggunakan plot ACF yang *tails off* dan membentuk gelombang sinus, pertanda data stasioner rataan
+
+Saya juga sudah mencoba untuk menaikkan k yang mana k awal = 3 hingga batas atas k=13 karena pada k=14 muncul p-value NA, hasil semua uji ADF tetap terima H0, data tidak stasioner dalam rataan, padahal menurut plot ACF, data partisi 1 stasioner dalam rataan. 
+
+#### Plot Box Cox
+```{r}
+index <- seq(1:30)
+bc = boxcox(dt_gasopen1~index, lambda = seq(0,3,by=1))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+Gambar di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **0.00** dan pada selang kepercayaan 95% nilai memiliki batas bawah **0.00** dan batas atas **1.8181**. Selang tersebut memuat nilai satu sehingga dapat dikatakan bahwa data partisi 1 stasioner dalam ragam.
+
+Berdasarkan plot time series, plot ACF, dan Uji Box Cox dapat disimpulkan bahwa data saham bukaan (gasopen) partisi 1 stasioner baik secara rataan maupun secara ragam. Namun, pada uji ADF menyatakan data partisi 1 tidak stasioner dalam rataan. 
+
+## Bagian 2
+Berdasarkan data penuh tampak ada data bagian awal yang cukup stasioner rataan lalu setelahnya mengalami trend naik terus
+Oleh karena itu, saya mencoba untuk partisi data 2 pada data yang mengalami trend naik terus menerus 
+
+### Data 
+```{r}
+dt_gasopen2 <- gas.open[100:200] |> ts()
+mean(dt_gasopen2)
+var(dt_gasopen2)
+```
+
+#### Plot Time Series 
+```{r}
+plot(dt_gasopen2)
+```
+
+Data tampak seperti memiliki trend sehingga diduga tidak stasioner baik rataan maupun ragam, namun perlu diuji lebih lanjut
+
+#### Plot ACF 
+```{r}
+acf(dt_gasopen2)
+```
+
+Tampak pada plot ACF, data partisi 2 cenderung *tails off slowly* sehingga data dapat dikatakan tidak stasioner secara rataan 
+
+#### Uji ADF
+```{r}
+tseries::adf.test(dt_gasopen2,k=10)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.05746 yang lebih besar dari taraf nyata 5% sehingga terima $H_0$ dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot ACF yang *tails off slowly*, pertanda data tidak stasioner rataan
+
+#### Plot Box Cox
+```{r}
+index <- seq(100:200)
+bc = boxcox(dt_gasopen2~index, lambda = seq(0,3,by=1))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+Gambar di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **0.00** dan pada selang kepercayaan 95% nilai memiliki batas bawah **0.00** dan batas atas **0.7272**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data partisi 2 tidak stasioner dalam ragam.
+
+Berdasarkan plot time series, plot ACF, uji ADF, dan Uji Box Cox dapat disimpulkan bahwa data saham bukaan (gasopen) partisi 2 tidak stasioner baik secara rataan maupun secara ragam.
